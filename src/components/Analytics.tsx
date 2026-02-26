@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import { getAnalytics } from '../utils/analytics';
 import type { AnalyticsData } from '../utils/analytics';
 import type { TimeLog } from '../utils/storage';
+import { getTodayString } from '../utils/storage';
 import { CATEGORY_COLORS } from '../utils/constants';
 
 interface AnalyticsProps {
@@ -10,7 +11,7 @@ interface AnalyticsProps {
 }
 
 export default function Analytics({ uid, onClose }: AnalyticsProps) {
-  const [timeRange, setTimeRange] = useState<'7' | '30' | 'all' | 'custom'>('7');
+  const [timeRange, setTimeRange] = useState<'today' | '7' | 'custom'>('today');
   const [customStart, setCustomStart] = useState('');
   const [customEnd, setCustomEnd] = useState('');
   const [data, setData] = useState<AnalyticsData | null>(null);
@@ -18,18 +19,19 @@ export default function Analytics({ uid, onClose }: AnalyticsProps) {
 
   useEffect(() => {
     async function loadAnalytics() {
+      if (timeRange === 'custom' && (!customStart || !customEnd)) return;
+      setLoading(true);
+      let analytics: AnalyticsData;
       if (timeRange === 'custom') {
-        if (!customStart || !customEnd) return;
-        setLoading(true);
-        const analytics = await getAnalytics(uid, undefined, { start: customStart, end: customEnd });
-        setData(analytics);
-        setLoading(false);
+        analytics = await getAnalytics(uid, undefined, { start: customStart, end: customEnd });
+      } else if (timeRange === 'today') {
+        const today = getTodayString();
+        analytics = await getAnalytics(uid, undefined, { start: today, end: today });
       } else {
-        setLoading(true);
-        const analytics = await getAnalytics(uid, timeRange === 'all' ? undefined : parseInt(timeRange));
-        setData(analytics);
-        setLoading(false);
+        analytics = await getAnalytics(uid, parseInt(timeRange));
       }
+      setData(analytics);
+      setLoading(false);
     }
     loadAnalytics();
   }, [uid, timeRange, customStart, customEnd]);
@@ -81,14 +83,13 @@ export default function Analytics({ uid, onClose }: AnalyticsProps) {
           {/* Time range selector */}
           <div className="flex flex-wrap gap-2">
             {[
+              { value: 'today', label: 'Today' },
               { value: '7', label: 'Last 7 days' },
-              { value: '30', label: 'Last 30 days' },
-              { value: 'all', label: 'All time' },
               { value: 'custom', label: 'Custom' },
             ].map((option) => (
               <button
                 key={option.value}
-                onClick={() => setTimeRange(option.value as '7' | '30' | 'all' | 'custom')}
+                onClick={() => setTimeRange(option.value as 'today' | '7' | 'custom')}
                 className={`px-3 py-1.5 rounded-lg text-sm font-medium transition-colors ${
                   timeRange === option.value
                     ? 'bg-blue-500 text-white'

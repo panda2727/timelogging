@@ -14,7 +14,6 @@ export interface CategorySubStats {
   totalMinutes: number;
   totalHours: number;
   percentage: number;
-  count: number;
 }
 
 export interface AnalyticsData {
@@ -42,8 +41,7 @@ export async function getAnalytics(
   } else if (daysBack) {
     const cutoffDate = new Date();
     cutoffDate.setDate(cutoffDate.getDate() - daysBack);
-    const d = cutoffDate;
-    const cutoffStr = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+    const cutoffStr = `${cutoffDate.getFullYear()}-${String(cutoffDate.getMonth() + 1).padStart(2, '0')}-${String(cutoffDate.getDate()).padStart(2, '0')}`;
     logs = logs.filter((log) => log.date >= cutoffStr);
   }
 
@@ -103,7 +101,6 @@ export async function getAnalytics(
       totalMinutes: stats.minutes,
       totalHours: Math.round((stats.minutes / 60) * 10) / 10,
       percentage: Math.round((stats.minutes / totalMinutes) * 100),
-      count: stats.count,
     }))
     .sort((a, b) => {
       const catOrder = categoryBreakdown.map((c) => c.category);

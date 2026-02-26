@@ -39,7 +39,7 @@ export default function LogForm({ onSubmit, onUpdate, onCancelEdit, editingLog }
     e.preventDefault();
     if (!startTime || !endTime || !category) return;
 
-    const data = { startTime, endTime, category, subCategory, description };
+    const data = { startTime, endTime, category, subCategory: subCategory.trimEnd(), description: description.trimEnd() };
 
     if (editingLog && onUpdate) {
       onUpdate(data);
@@ -120,6 +120,7 @@ export default function LogForm({ onSubmit, onUpdate, onCancelEdit, editingLog }
           type="text"
           value={subCategory}
           onChange={(e) => setSubCategory(e.target.value)}
+          onBlur={(e) => setSubCategory(e.target.value.trimEnd())}
           placeholder="e.g. exercise, meeting, prayer..."
           className="w-full rounded-lg border border-gray-300 px-3 py-2.5 focus:border-blue-500 focus:ring-2 focus:ring-blue-200 outline-none"
         />
@@ -132,6 +133,7 @@ export default function LogForm({ onSubmit, onUpdate, onCancelEdit, editingLog }
           type="text"
           value={description}
           onChange={(e) => setDescription(e.target.value)}
+          onBlur={(e) => setDescription(e.target.value.trimEnd())}
           placeholder="What did you do?"
           className="w-full rounded-lg border border-gray-300 px-3 py-2.5 focus:border-blue-500 focus:ring-2 focus:ring-blue-200 outline-none"
         />
