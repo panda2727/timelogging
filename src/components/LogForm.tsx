@@ -1,6 +1,7 @@
-import { useState, useEffect } from 'react';
+import { useState, useRef } from 'react';
 import type { TimeLog } from '../utils/storage';
 import { CATEGORY_COLORS } from '../utils/constants';
+import { parseVoiceEntry } from '../utils/voiceParsing';
 
 const CATEGORIES: TimeLog['category'][] = ['self', 'routine', 'faith', 'work', 'family'];
 
@@ -11,29 +12,104 @@ interface LogFormProps {
   editingLog?: TimeLog | null;
 }
 
-export default function LogForm({ onSubmit, onUpdate, onCancelEdit, editingLog }: LogFormProps) {
-  const [startTime, setStartTime] = useState('');
-  const [endTime, setEndTime] = useState('');
-  const [category, setCategory] = useState<TimeLog['category'] | ''>('');
-  const [subCategory, setSubCategory] = useState('');
-  const [description, setDescription] = useState('');
+type VoiceState = 'idle' | 'listening' | 'error';
 
-  // Pre-fill form when editing
-  useEffect(() => {
-    if (editingLog) {
-      setStartTime(editingLog.startTime);
-      setEndTime(editingLog.endTime);
-      setCategory(editingLog.category);
-      setSubCategory(editingLog.subCategory);
-      setDescription(editingLog.description);
-    } else {
-      setStartTime('');
-      setEndTime('');
-      setCategory('');
-      setSubCategory('');
-      setDescription('');
+interface SR {
+  continuous: boolean;
+  interimResults: boolean;
+  lang: string;
+  start(): void;
+  abort(): void;
+  onresult: ((e: { resultIndex: number; results: Array<{ isFinal: boolean } & { 0: { transcript: string } }> }) => void) | null;
+  onerror: (() => void) | null;
+  onend: (() => void) | null;
+}
+
+type SRWindow = Window & { SpeechRecognition?: new () => SR; webkitSpeechRecognition?: new () => SR };
+
+const SpeechRecognitionCtor = (
+  (window as SRWindow).SpeechRecognition ??
+  (window as SRWindow).webkitSpeechRecognition ??
+  null
+);
+const speechSupported = SpeechRecognitionCtor !== null;
+
+const IconMic = () => (
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" className="w-5 h-5 shrink-0">
+    <path d="M8.25 4.5a3.75 3.75 0 1 1 7.5 0v8.25a3.75 3.75 0 1 1-7.5 0V4.5Z" />
+    <path d="M6 10.5a.75.75 0 0 1 .75.75v1.5a5.25 5.25 0 1 0 10.5 0v-1.5a.75.75 0 0 1 1.5 0v1.5a6.751 6.751 0 0 1-6 6.709v2.291h3a.75.75 0 0 1 0 1.5h-7.5a.75.75 0 0 1 0-1.5h3v-2.291a6.751 6.751 0 0 1-6-6.709v-1.5A.75.75 0 0 1 6 10.5Z" />
+  </svg>
+);
+
+const IconStop = () => (
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" className="w-5 h-5 shrink-0">
+    <path fillRule="evenodd" d="M4.5 7.5a3 3 0 0 1 3-3h9a3 3 0 0 1 3 3v9a3 3 0 0 1-3 3h-9a3 3 0 0 1-3-3v-9Z" clipRule="evenodd" />
+  </svg>
+);
+
+export default function LogForm({ onSubmit, onUpdate, onCancelEdit, editingLog }: LogFormProps) {
+  const [startTime, setStartTime] = useState(editingLog?.startTime ?? '');
+  const [endTime, setEndTime] = useState(editingLog?.endTime ?? '');
+  const [category, setCategory] = useState<TimeLog['category'] | ''>(editingLog?.category ?? '');
+  const [subCategory, setSubCategory] = useState(editingLog?.subCategory ?? '');
+  const [description, setDescription] = useState(editingLog?.description ?? '');
+
+  const [voiceState, setVoiceState] = useState<VoiceState>('idle');
+  const [voiceTranscript, setVoiceTranscript] = useState('');
+  const recognitionRef = useRef<SR | null>(null);
+
+  function handleVoice() {
+    if (!SpeechRecognitionCtor) return;
+
+    if (voiceState === 'listening') {
+      recognitionRef.current?.abort();
+      recognitionRef.current = null;
+      setVoiceState('idle');
+      setVoiceTranscript('');
+      return;
     }
-  }, [editingLog]);
+
+    const recognition = new SpeechRecognitionCtor();
+    recognition.continuous = false;
+    recognition.interimResults = true;
+    recognition.lang = 'en-US';
+    recognitionRef.current = recognition;
+
+    recognition.onresult = (e) => {
+      let interim = '';
+      let final = '';
+      for (let i = e.resultIndex; i < e.results.length; i++) {
+        const t = e.results[i][0].transcript;
+        if (e.results[i].isFinal) final += t;
+        else interim += t;
+      }
+      setVoiceTranscript(final || interim);
+      if (final) {
+        const parsed = parseVoiceEntry(final);
+        if (parsed.startTime) setStartTime(parsed.startTime);
+        if (parsed.endTime) setEndTime(parsed.endTime);
+        if (parsed.category) setCategory(parsed.category);
+        if (parsed.subCategory !== undefined) setSubCategory(parsed.subCategory);
+        if (parsed.description !== undefined) setDescription(parsed.description);
+      }
+    };
+
+    recognition.onerror = () => {
+      setVoiceState('error');
+      recognitionRef.current = null;
+      setTimeout(() => setVoiceState('idle'), 2000);
+    };
+
+    recognition.onend = () => {
+      recognitionRef.current = null;
+      setVoiceState('idle');
+      setVoiceTranscript('');
+    };
+
+    setVoiceTranscript('');
+    setVoiceState('listening');
+    recognition.start();
+  }
 
   function handleSubmit(e: React.BaseSyntheticEvent) {
     e.preventDefault();
@@ -68,7 +144,36 @@ export default function LogForm({ onSubmit, onUpdate, onCancelEdit, editingLog }
         </div>
       )}
 
-      {/* Time inputs */}
+      {speechSupported && (
+        <div className="space-y-1">
+          <button
+            type="button"
+            onClick={handleVoice}
+            className={`w-full flex items-center justify-center gap-2 py-3 rounded-lg font-medium transition-colors ${
+              voiceState === 'listening'
+                ? 'bg-red-100 text-red-700 border-2 border-red-400 animate-pulse'
+                : voiceState === 'error'
+                  ? 'bg-orange-100 text-orange-700 border border-orange-300'
+                  : 'bg-gray-100 text-gray-600 hover:bg-gray-200 border border-gray-300'
+            }`}
+          >
+            {voiceState === 'listening' ? <IconStop /> : <IconMic />}
+            <span className="text-sm">
+              {voiceState === 'listening'
+                ? voiceTranscript ? `"${voiceTranscript}"` : 'Listening…'
+                : voiceState === 'error'
+                  ? 'Could not hear — try again'
+                  : 'Speak your entry'}
+            </span>
+          </button>
+          {voiceState === 'idle' && (
+            <p className="text-xs text-gray-400 text-center">
+              e.g. "from 7 am to 9 am category self sub-category workout description running"
+            </p>
+          )}
+        </div>
+      )}
+
       <div className="grid grid-cols-2 gap-3">
         <div>
           <label className="block text-sm font-medium text-gray-600 mb-1">Start</label>
@@ -92,7 +197,6 @@ export default function LogForm({ onSubmit, onUpdate, onCancelEdit, editingLog }
         </div>
       </div>
 
-      {/* Category chips */}
       <div>
         <label className="block text-sm font-medium text-gray-600 mb-2">Category</label>
         <div className="flex flex-wrap gap-2">
@@ -113,7 +217,6 @@ export default function LogForm({ onSubmit, onUpdate, onCancelEdit, editingLog }
         </div>
       </div>
 
-      {/* Sub-category */}
       <div>
         <label className="block text-sm font-medium text-gray-600 mb-1">Sub-category</label>
         <input
@@ -126,7 +229,6 @@ export default function LogForm({ onSubmit, onUpdate, onCancelEdit, editingLog }
         />
       </div>
 
-      {/* Description */}
       <div>
         <label className="block text-sm font-medium text-gray-600 mb-1">Description</label>
         <input
@@ -139,7 +241,6 @@ export default function LogForm({ onSubmit, onUpdate, onCancelEdit, editingLog }
         />
       </div>
 
-      {/* Submit */}
       <button
         type="submit"
         disabled={!startTime || !endTime || !category}

@@ -22,7 +22,7 @@ export default function Login() {
       } else {
         await createUserWithEmailAndPassword(auth, email, password);
       }
-    } catch (err: any) {
+    } catch (err: unknown) {
       const msg: Record<string, string> = {
         'auth/invalid-credential': 'Incorrect email or password.',
         'auth/user-not-found': 'No account found with this email.',
@@ -31,7 +31,8 @@ export default function Login() {
         'auth/weak-password': 'Password must be at least 6 characters.',
         'auth/invalid-email': 'Please enter a valid email address.',
       };
-      setError(msg[err.code] ?? 'Something went wrong. Please try again.');
+      const code = typeof err === 'object' && err !== null && 'code' in err ? String(err.code) : '';
+      setError(msg[code] ?? 'Something went wrong. Please try again.');
     } finally {
       setLoading(false);
     }

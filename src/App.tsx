@@ -42,16 +42,17 @@ function MainApp({ user }: { user: User }) {
   const [selectedDate, setSelectedDate] = useState(today);
   const [logs, setLogs] = useState<TimeLog[]>([]);
   const [showAnalytics, setShowAnalytics] = useState(false);
-  const [loading, setLoading] = useState(true);
+  const [loadedFor, setLoadedFor] = useState<string | null>(null);
   const [editingLog, setEditingLog] = useState<TimeLog | null>(null);
 
   const isToday = selectedDate === today;
+  const loading = loadedFor !== `${user.uid}:${selectedDate}`;
 
   useEffect(() => {
-    setLoading(true);
+    const key = `${user.uid}:${selectedDate}`;
     const unsubscribe = subscribeToLogsByDate(user.uid, selectedDate, (updatedLogs) => {
       setLogs(updatedLogs);
-      setLoading(false);
+      setLoadedFor(key);
     });
     return () => unsubscribe();
   }, [user.uid, selectedDate]);
@@ -206,15 +207,16 @@ function MainApp({ user }: { user: User }) {
           {/* Analytics button */}
           <button
             onClick={() => setShowAnalytics(true)}
-            className="w-full bg-gradient-to-r from-blue-500 to-purple-500 text-white py-3 rounded-lg font-medium hover:from-blue-600 hover:to-purple-600 transition-all shadow-md hover:shadow-lg"
+            className="w-full bg-blue-500 hover:bg-blue-600 active:bg-blue-700 text-white py-3 rounded-lg font-medium transition-colors"
           >
-            📊 View Analytics & Insights
+            View Analytics & Insights
           </button>
         </div>
 
         {/* Form */}
         <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-4 mb-6">
           <LogForm
+            key={editingLog?.id ?? 'new'}
             onSubmit={handleAdd}
             onUpdate={handleUpdate}
             editingLog={editingLog}
